@@ -9,7 +9,6 @@ from telegram.ext import (
 )
 
 TOKEN = os.getenv("BOT_TOKEN")
-STAGE = range(1)
 RESPONSES_FILE = "responses.json"
 
 QUESTIONS = [
@@ -44,6 +43,7 @@ QUESTIONS = [
 
 user_states = {}
 
+# Загружаем прошлые ответы (если есть)
 def load_responses():
     if os.path.exists(RESPONSES_FILE):
         with open(RESPONSES_FILE, "r", encoding="utf-8") as f:
@@ -58,34 +58,46 @@ responses = load_responses()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
-    user_states[user_id] = 0
+    user_states[user_id] = -1  # ожидание "Да"
     responses[user_id] = []
     save_responses(responses)
     await update.message.reply_text("С Днем Рождения, любимый! 🎉 Я приготовил(а) тебе романтический квест. Готов? Напиши 'Да' ✨")
-    return STAGE
 
-async def continue_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
-    step = user_states.get(user_id, 0)
-
-    if step == 0 and update.message.text.lower() not in ["да", "конечно"]:
-        await update.message.reply_text("Напиши 'Да', чтобы начать 💖")
-        return STAGE
-
-    q = QUESTIONS[step]
-    answer_text = update.message.text
+    text = update.message.text or ""
     photo_id = update.message.photo[-1].file_id if update.message.photo else None
 
-    responses.setdefault(user_id, []).append({
+    if user_id not in user_states:
+        await update.message.reply_text("Напиши /start, чтобы начать 🎉")
+        return
+
+    step = user_states[user_id]
+
+    if step == -1:
+        if text.lower() in ["да", "конечно"]:
+            user_states[user_id] = 0
+            await ask_question(update, context)
+        else:
+            await update.message.reply_text("Напиши 'Да', чтобы начать 💖")
+        return
+
+    if step >= len(QUESTIONS):
+        await update.message.reply_text("Квест уже завершён! 🎉")
+        return
+
+    q = QUESTIONS[step]
+    entry = {
         "time": datetime.now().isoformat(),
         "question": q["question"],
-        "answer": answer_text,
-        "photo": photo_id
-    })
+        "answer": text if text else None,
+        "photo": photo_id if photo_id else None
+    }
+    responses.setdefault(user_id, []).append(entry)
     save_responses(responses)
 
     if q["type"] == "quiz":
-        if answer_text and answer_text.strip().lower() == q["answer"].lower():
+        if text and text.strip().lower() == q["answer"].lower():
             await update.message.reply_text("Правильно! 😘")
         else:
             await update.message.reply_text(f"Хм, правильный ответ был: {q['answer']} 😉")
@@ -93,7 +105,8 @@ async def continue_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Улыбка дня принята! 📸")
     elif q["type"] == "final":
         await update.message.reply_text("Все твои ответы и фото — это самое ценное 💌 Мы обязательно сделаем то, что ты хочешь, а теперь просто ожидай сюрприз… 🎁")
-        return ConversationHandler.END
+        user_states[user_id] = len(QUESTIONS)
+        return
     else:
         await update.message.reply_text("Ответ принят! 📝")
 
@@ -102,22 +115,21 @@ async def continue_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_photo(chat_id=update.effective_chat.id, photo=InputFile(ticket_path), caption=f"🎟 Билет №{step+1} выдан!")
 
     user_states[user_id] += 1
-    step += 1
+    if user_states[user_id] < len(QUESTIONS):
+        await ask_question(update, context)
+
+async def ask_question(update_or_context, context):
+    user_id = str(update_or_context.effective_user.id)
+    step = user_states.get(user_id, 0)
     if step >= len(QUESTIONS):
-        return ConversationHandler.END
-
-    next_q = QUESTIONS[step]
-    if next_q["type"] in ["choice", "quiz"]:
-        keyboard = [[KeyboardButton(opt)] for opt in next_q["options"]]
+        return
+    q = QUESTIONS[step]
+    if q["type"] in ["choice", "quiz"]:
+        keyboard = [[KeyboardButton(opt)] for opt in q["options"]]
         markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text(next_q["question"], reply_markup=markup)
+        await context.bot.send_message(chat_id=user_id, text=q["question"], reply_markup=markup)
     else:
-        await update.message.reply_text(next_q["question"])
-    return STAGE
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("До встречи, Любовь ❤️")
-    return ConversationHandler.END
+        await context.bot.send_message(chat_id=user_id, text=q["question"])
 
 async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if os.path.exists(RESPONSES_FILE):
@@ -125,17 +137,13 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Файл ещё не создан 😢")
 
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("До встречи, Любовь ❤️")
+
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
-
-    conv = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            STAGE: [MessageHandler(filters.ALL, continue_game)]
-        },
-        fallbacks=[CommandHandler("cancel", cancel)]
-    )
-
-    app.add_handler(conv)
+    app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("download", download))
+    app.add_handler(CommandHandler("cancel", cancel))
+    app.add_handler(MessageHandler(filters.ALL, handle_message))
     app.run_polling()
