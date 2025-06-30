@@ -128,7 +128,7 @@ async def handle_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     await context.bot.send_message(chat_id=user_id, text="✨ Следующее задание будет через 30 минут… Жди! ❤️")
-    await asyncio.sleep(1800)  # 30 минут
+    await asyncio.sleep(60)  # ТАЙМАУТ
     return await ask_question(update, context)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
