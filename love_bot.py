@@ -4,13 +4,10 @@ from datetime import datetime
 from telegram import Update, InputFile, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     ApplicationBuilder, CommandHandler,
-    MessageHandler, filters, ContextTypes,
-    ConversationHandler
+    MessageHandler, filters, ContextTypes
 )
 
 TOKEN = os.getenv("BOT_TOKEN")
-RESPONSES_FILE = "responses.json"
-
 QUESTIONS = [
     {
         "type": "choice",
@@ -43,24 +40,9 @@ QUESTIONS = [
 
 user_states = {}
 
-# Загружаем прошлые ответы (если есть)
-def load_responses():
-    if os.path.exists(RESPONSES_FILE):
-        with open(RESPONSES_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-def save_responses(data):
-    with open(RESPONSES_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-responses = load_responses()
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
-    user_states[user_id] = -1  # ожидание "Да"
-    responses[user_id] = []
-    save_responses(responses)
+    user_states[user_id] = -1
     await update.message.reply_text("С Днем Рождения, любимый! 🎉 Я приготовил(а) тебе романтический квест. Готов? Напиши 'Да' ✨")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -87,17 +69,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     q = QUESTIONS[step]
-    entry = {
-        "time": datetime.now().isoformat(),
-        "question": q["question"],
-        "answer": text if text else None,
-        "photo": photo_id if photo_id else None
-    }
-    responses.setdefault(user_id, []).append(entry)
-    save_responses(responses)
 
     if q["type"] == "quiz":
-        if text and text.strip().lower() == q["answer"].lower():
+        if text.strip().lower() == q["answer"].lower():
             await update.message.reply_text("Правильно! 😘")
         else:
             await update.message.reply_text(f"Хм, правильный ответ был: {q['answer']} 😉")
@@ -131,19 +105,12 @@ async def ask_question(update_or_context, context):
     else:
         await context.bot.send_message(chat_id=user_id, text=q["question"])
 
-async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if os.path.exists(RESPONSES_FILE):
-        await update.message.reply_document(document=InputFile(RESPONSES_FILE), filename="responses.json")
-    else:
-        await update.message.reply_text("Файл ещё не создан 😢")
-
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("До встречи, Любовь ❤️")
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("download", download))
     app.add_handler(CommandHandler("cancel", cancel))
     app.add_handler(MessageHandler(filters.ALL, handle_message))
     app.run_polling()
