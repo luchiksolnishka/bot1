@@ -1,6 +1,5 @@
 import os
 import json
-import asyncio
 from datetime import datetime
 from telegram import Update, InputFile, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
@@ -127,13 +126,17 @@ async def handle_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_states[user_id] >= len(QUESTIONS):
         return ConversationHandler.END
 
-    await context.bot.send_message(chat_id=user_id, text="✨ Следующее задание будет через 30 минут… Жди! ❤️")
-    await asyncio.sleep(60)  # ТАЙМАУТ
     return await ask_question(update, context)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("До встречи, Любовь ❤️")
+    await update.message.reply_text("До встречи ❤️")
     return ConversationHandler.END
+
+async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if os.path.exists(RESPONSES_FILE):
+        await update.message.reply_document(document=InputFile(RESPONSES_FILE), filename="responses.json")
+    else:
+        await update.message.reply_text("Файл ещё не создан 😢")
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
@@ -148,4 +151,5 @@ if __name__ == '__main__':
     )
 
     app.add_handler(conv)
+    app.add_handler(CommandHandler("download", download))
     app.run_polling()
