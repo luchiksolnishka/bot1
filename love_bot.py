@@ -5,6 +5,7 @@ from telegram.ext import (
     ConversationHandler
 )
 import os
+import asyncio
 
 TOKEN = os.getenv("BOT_TOKEN")
 START, QUESTION = range(2)
@@ -53,7 +54,7 @@ async def handle_answer(update, context):
         else:
             await update.message.reply_text(f"Хм, правильный ответ был: {q['answer']} 😉")
     elif q["type"] == "open":
-        await update.message.reply_text(f"Интересно! Я это запомню ❤️")
+        await update.message.reply_text("Интересно! Я это запомню ❤️")
     elif q["type"] == "task":
         await update.message.reply_text("Красивый вид! Люблю твой город 🌇")
     elif q["type"] == "choice":
@@ -76,7 +77,7 @@ async def cancel(update, context):
     await update.message.reply_text("До встречи, Любовь ❤️")
     return ConversationHandler.END
 
-if __name__ == '__main__':
+async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     conv = ConversationHandler(
@@ -89,4 +90,11 @@ if __name__ == '__main__':
     )
 
     app.add_handler(conv)
-    app.run_polling()
+
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    await app.updater.idle()
+
+if __name__ == '__main__':
+    asyncio.run(main())
