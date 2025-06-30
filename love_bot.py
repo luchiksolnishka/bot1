@@ -106,7 +106,7 @@ async def ask_question(update_or_context, context):
         await context.bot.send_message(chat_id=user_id, text=q["question"])
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("До встречи, Любовь ❤️")
+    await update.message.reply_text("До встречи❤️")
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
