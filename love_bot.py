@@ -1,13 +1,11 @@
 import os
-import json
-from datetime import datetime
 from telegram import Update, InputFile, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (
     ApplicationBuilder, CommandHandler,
     MessageHandler, filters, ContextTypes
 )
 
-TOKEN = os.getenv("BOT_TOKEN")  # Убедись, что переменная окружения задана!
+TOKEN = os.getenv("BOT_TOKEN")
 
 QUESTIONS = [
     {
@@ -25,36 +23,27 @@ QUESTIONS = [
         "type": "quiz",
         "question": "Помнишь нашу поездку в Казань? Как назывался отель, в котором мы остановились?",
         "options": ["Татарская слобода", "Мираж", "Корона", "Кристалл"],
-        "answer": "Корона",
-        "responses": {
-            "правильно": "Да! Корона 👑 — королевский отдых с королём 💕",
-            "неправильно": "Почти! Но правильный ответ: Корона 👑"
-        }
+        "answer": "Корона"
     },
     {
         "type": "open",
-        "question": "Какое самое безумное приключение ты бы хотел пережить со мной? 🌍",
-        "response": "Пусть будет зафиксировано здесь, в скором времени нам стоит это осуществить, хихих"
+        "question": "Какое самое безумное приключение ты бы хотел пережить со мной? 🌍"
     },
     {
         "type": "open",
-        "question": "Назови 3 вещи, которые тебя искренне радуют в последнее время (кроме меня, я и так знаю) 😉",
-        "response": "Спасибо, что делишься. Твоя радость — моя радость 💗"
+        "question": "Назови 3 вещи, которые тебя искренне радуют в последнее время (кроме меня, я и так знаю) 😉"
     },
     {
         "type": "photo",
-        "question": "Сделай милое селфи прямо сейчас и пришли сюда 📸",
-        "response": "Ай-ай-ай, какой красавчик попался в объектив! 😍"
+        "question": "Сделай милое селфи прямо сейчас и пришли сюда 📸"
     },
     {
         "type": "final",
-        "question": "Отлично, квест пройден! Теперь финальное задание: ✨\n\nНапиши время, когда ты сегодня ТОЧНО будешь дома и адрес. Это важно для… сюрприза! 🎂",
-        "response": "Записано! Готовься к приятной неожиданности 🎁"
+        "question": "Отлично, квест пройден! Теперь финальное задание: ✨\n\nНапиши время, когда ты сегодня ТОЧНО будешь дома и адрес. Это важно для… сюрприза! 🎂"
     }
 ]
 
 user_states = {}
-waiting_for_continue = set()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -72,13 +61,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     step = user_states[user_id]
 
-    # Обработка "Продолжить"
-    if text.lower() == "продолжить" and user_id in waiting_for_continue:
-        waiting_for_continue.remove(user_id)
-        user_states[user_id] += 1
-        await ask_question(update, context)
-        return
-
     if step == -1:
         if text.lower() in ["да", "конечно"]:
             user_states[user_id] = 0
@@ -94,29 +76,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = QUESTIONS[step]
     response = ""
 
-    # Обработка разных типов вопросов
+    # Ответы
     if q["type"] == "quiz":
         if text.strip().lower() == q["answer"].lower():
-            response = q.get("responses", {}).get("правильно", "Молодец! ❤️")
+            response = "Правильно! 🧠 Ты помнишь самые важные моменты 💞"
         else:
-            correct = q["answer"]
-            response = q.get("responses", {}).get("неправильно", f"Правильный ответ: {correct}")
+            response = f"Хихи, неправильно 😅 На самом деле — {q['answer']}!"
     elif q["type"] == "choice":
-        response = q.get("responses", {}).get(text.strip().lower(), "Ты выбрал интересный вариант 🥰")
+        answer_key = text.strip().lower()
+        response = q.get("responses", {}).get(answer_key, "Ты выбрал интересный вариант 🥰")
     elif q["type"] == "photo":
         if photo:
-            response = q.get("response", "Какое классное фото! ❤️")
+            response = "Ооо, ты такой(ая) милый(ая)! 😍"
         else:
             await update.message.reply_text("Жду фото! 📷")
             return
     elif q["type"] == "final":
-        response = q.get("response", "Принято! 🎂 Сюрприз в пути!")
-        await update.message.reply_text(response, reply_markup=ReplyKeyboardRemove())
-        user_states[user_id] += 1
-        return
-    else:
-        response = q.get("response", "Интересно 💌")
+        response = "Записала! Спасибо, жди волшебства... 🎁"
+    else:  # open
+        response = "Пусть будет зафиксировано здесь 💌 В скором времени надо это осуществить 😄"
 
+    # Отправка ответа
     await update.message.reply_text(response, reply_markup=ReplyKeyboardRemove())
 
     # 🎟 Выдача билета
@@ -128,18 +108,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             caption=f"🎟 Билет №{step+1} выдан!"
         )
 
-# ⏭ Переход к следующему вопросу
-user_states[user_id] += 1
-if user_states[user_id] < len(QUESTIONS):
-    await ask_question(update, context)
-else:
-    await update.message.reply_text("Это был последний вопрос! 🎉")
-    
+    # Переход к следующему вопросу
+    user_states[user_id] += 1
+    if user_states[user_id] < len(QUESTIONS):
+        await ask_question(update, context)
+    else:
+        await update.message.reply_text("Это был последний вопрос! 🎉")
+
 async def ask_question(update_or_context, context):
     user_id = str(update_or_context.effective_user.id)
     step = user_states.get(user_id, 0)
     if step >= len(QUESTIONS):
         return
+
     q = QUESTIONS[step]
     if q["type"] in ["choice", "quiz"]:
         keyboard = [[KeyboardButton(opt)] for opt in q["options"]]
