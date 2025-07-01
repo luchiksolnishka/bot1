@@ -57,13 +57,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     text = update.message.text or ""
-    photo_id = update.message.photo[-1].file_id if update.message.photo else None
+    photo = update.message.photo[-1].file_id if update.message.photo else None
 
     if user_id not in user_states:
         await update.message.reply_text("Напиши /start, чтобы начать 🎉")
         return
 
     step = user_states[user_id]
+
+    # Обработка "Продолжить"
+    if text.lower() == "продолжить" and user_id in waiting_for_continue:
+        waiting_for_continue.remove(user_id)
+        user_states[user_id] += 1  # Теперь можно увеличивать шаг
+        await ask_question(update, context)  # Показываем следующий вопрос
+        return
 
     if step == -1:
         if text.lower() in ["да", "конечно"]:
@@ -78,38 +85,50 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     q = QUESTIONS[step]
+    response = ""
 
+    # Логика ответа на текущий вопрос
     if q["type"] == "quiz":
         if text.strip().lower() == q["answer"].lower():
-            await update.message.reply_text("Правильно! 😘")
+            response = RESPONSES[step]["правильно"]
         else:
-            await update.message.reply_text(f"Правильный ответ был: {q['answer']} 😉")
+            response = RESPONSES[step]["неправильно"].format(answer=q["answer"])
+    elif q["type"] == "choice":
+        response = RESPONSES[step].get(text.strip().lower(), "Ты выбрал интересный вариант 🥰")
     elif q["type"] == "photo":
-        if photo_id:
-            await update.message.reply_text("Улыбка дня принята! 📸")
+        if photo:
+            response = RESPONSES[step]
         else:
             await update.message.reply_text("Жду фото! 📷")
             return
     elif q["type"] == "final":
-        await update.message.reply_text("Все твои ответы и фото — это самое ценное 💌 Мы обязательно сделаем то, что ты хочешь, а теперь просто ожидай сюрприз… 🎁")
-        user_states[user_id] = len(QUESTIONS)
+        response = RESPONSES[step]
+        await update.message.reply_text(response, reply_markup=ReplyKeyboardRemove())
+        user_states[user_id] += 1
         return
-    elif q["type"] == "choice":
-        lower_text = text.strip().lower()
-        response = q.get("responses", {}).get(lower_text, "Ответ принят! 📝")
-        await update.message.reply_text(response)
     else:
-        await update.message.reply_text("Ответ принят! 📝")
+        response = RESPONSES[step]
 
-    ticket_path = f"tickets/ticket{step + 1}.jpg"
+    await update.message.reply_text(response, reply_markup=ReplyKeyboardRemove())
+
+    # 🎟 Выдача билета (именно после ответа, по текущему шагу)
+    ticket_path = f"tickets/ticket{step+1}.jpg"
     if os.path.exists(ticket_path):
-        await context.bot.send_photo(chat_id=update.effective_chat.id, photo=InputFile(ticket_path), caption=f"🎟 Билет №{step+1} выдан!")
+        await context.bot.send_photo(
+            chat_id=update.effective_chat.id,
+            photo=InputFile(ticket_path),
+            caption=f"🎟 Билет №{step+1} выдан!"
+        )
 
-    user_states[user_id] += 1
-    if user_states[user_id] < len(QUESTIONS):
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="Нажми 'Продолжить', когда будешь готов к следующему вопросу 💌", reply_markup=ReplyKeyboardMarkup([["Продолжить"]], resize_keyboard=True))
+    # ⏭ Предложить перейти к следующему вопросу
+    if step + 1 < len(QUESTIONS):
+        keyboard = [[KeyboardButton("Продолжить")]]
+        markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text("Нажми 'Продолжить', чтобы перейти к следующему вопросу 💌", reply_markup=markup)
+        waiting_for_continue.add(user_id)
     else:
-        await update.message.reply_text("Квест завершён! 🎉", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("Это был последний вопрос! 🎉")
+
 
 async def ask_question(update_or_context, context):
     user_id = str(update_or_context.effective_user.id)
