@@ -1,18 +1,25 @@
 import os
 import json
 from datetime import datetime
-from telegram import Update, InputFile, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, InputFile, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (
     ApplicationBuilder, CommandHandler,
     MessageHandler, filters, ContextTypes
 )
 
 TOKEN = os.getenv("BOT_TOKEN")
+
 QUESTIONS = [
     {
         "type": "choice",
         "question": "Что бы ты хотел делать в первую очередь, когда мы встретимся? 😉",
-        "options": ["Обнимашки", "Рассказывать все новости", "Очень много гулять", "Смотреть в глаза"]
+        "options": ["Обнимашки", "Рассказывать все новости", "Очень много гулять", "Смотреть в глаза"],
+        "responses": {
+            "обнимашки": "Я бы тоже очень хотела тебя сейчас обнять. Утонуть в тепле и уюте🫂",
+            "рассказывать все новости": "Мы можем разговаривать часами напролет, но и молчать нам комфортно🤫",
+            "очень много гулять": "Гулять так, что ноги отваливаются. Такое одобряем😃",
+            "смотреть в глаза": "Давно я их не видела, надо исправлять💔"
+        }
     },
     {
         "type": "quiz",
@@ -76,11 +83,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(f"Хм, правильный ответ был: {q['answer']} 😉")
     elif q["type"] == "photo":
-        await update.message.reply_text("Улыбка дня принята! 📸")
+        if photo_id:
+            await update.message.reply_text("Улыбка дня принята! 📸")
+        else:
+            await update.message.reply_text("Жду фото! 📷")
+            return
     elif q["type"] == "final":
         await update.message.reply_text("Все твои ответы и фото — это самое ценное 💌 Мы обязательно сделаем то, что ты хочешь, а теперь просто ожидай сюрприз… 🎁")
         user_states[user_id] = len(QUESTIONS)
         return
+    elif q["type"] == "choice":
+        lower_text = text.strip().lower()
+        response = q.get("responses", {}).get(lower_text, "Ответ принят! 📝")
+        await update.message.reply_text(response)
     else:
         await update.message.reply_text("Ответ принят! 📝")
 
@@ -90,7 +105,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_states[user_id] += 1
     if user_states[user_id] < len(QUESTIONS):
-        await ask_question(update, context)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Нажми 'Продолжить', когда будешь готов к следующему вопросу 💌", reply_markup=ReplyKeyboardMarkup([["Продолжить"]], resize_keyboard=True))
+    else:
+        await update.message.reply_text("Квест завершён! 🎉", reply_markup=ReplyKeyboardRemove())
 
 async def ask_question(update_or_context, context):
     user_id = str(update_or_context.effective_user.id)
@@ -103,7 +120,7 @@ async def ask_question(update_or_context, context):
         markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
         await context.bot.send_message(chat_id=user_id, text=q["question"], reply_markup=markup)
     else:
-        await context.bot.send_message(chat_id=user_id, text=q["question"])
+        await context.bot.send_message(chat_id=user_id, text=q["question"], reply_markup=ReplyKeyboardRemove())
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("До встречи❤️")
@@ -112,5 +129,5 @@ if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("cancel", cancel))
-    app.add_handler(MessageHandler(filters.ALL, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, handle_message))
     app.run_polling()
