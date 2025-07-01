@@ -128,15 +128,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             caption=f"🎟 Билет №{step+1} выдан!"
         )
 
-    # ⏭ Кнопка "Продолжить"
-    if step + 1 < len(QUESTIONS):
-        keyboard = [[KeyboardButton("Продолжить")]]
-        markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_text("Нажми 'Продолжить', чтобы перейти к следующему вопросу 💌", reply_markup=markup)
-        waiting_for_continue.add(user_id)
-    else:
-        await update.message.reply_text("Это был последний вопрос! 🎉")
-
+# ⏭ Переход к следующему вопросу
+user_states[user_id] += 1
+if user_states[user_id] < len(QUESTIONS):
+    await ask_question(update, context)
+else:
+    await update.message.reply_text("Это был последний вопрос! 🎉")
+    
 async def ask_question(update_or_context, context):
     user_id = str(update_or_context.effective_user.id)
     step = user_states.get(user_id, 0)
