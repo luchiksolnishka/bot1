@@ -10,8 +10,8 @@ from telebot.types import Message, ReplyKeyboardMarkup, ReplyKeyboardRemove
 
 RESET_MESSAGE = 'Начать заново'
 
-# load config from config.yml
-with open('config.yml') as config_file:
+# load config from render.yml
+with open('render.yml') as config_file:
     config = yaml.safe_load(config_file)
 
 questions: List[Dict] = config['questions']
