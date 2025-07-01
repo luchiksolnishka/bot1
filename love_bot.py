@@ -29,7 +29,9 @@ QUESTIONS = [
     },
     {
         "type": "open",
-        "question": "Какое самое безумное приключение ты бы хотел пережить со мной? 🌍"
+        "question": "Какое самое безумное приключение ты бы хотел пережить со мной? 🌍",
+        "responses": {
+            "Пусть будет зафиксировано здесь, в скором времени нам стоит это осуществить, хихих"
     },
     {
         "type": "open",
@@ -50,7 +52,7 @@ user_states = {}
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     user_states[user_id] = -1
-    await update.message.reply_text("С Днем Рождения, любимый! 🎉 Я приготовил(а) тебе романтический квест. Готов? Напиши 'Да' ✨")
+    await update.message.reply_text("С Днем Рождения, любимый! 🎉 Я приготовила тебе романтический квест. Готов? Напиши 'Да' ✨")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -81,7 +83,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if text.strip().lower() == q["answer"].lower():
             await update.message.reply_text("Правильно! 😘")
         else:
-            await update.message.reply_text(f"Хм, правильный ответ был: {q['answer']} 😉")
+            await update.message.reply_text(f"Правильный ответ был: {q['answer']} 😉")
     elif q["type"] == "photo":
         if photo_id:
             await update.message.reply_text("Улыбка дня принята! 📸")
