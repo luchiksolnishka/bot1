@@ -1,117 +1,97 @@
-import atexit
-import json
-import random
-import time
-from typing import Dict, List, Union
+from telegram import Update, InputFile
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler,
+    MessageHandler, filters, ContextTypes,
+    ConversationHandler
+)
+import os
 
-import telebot
-import yaml
-from telebot.types import Message, ReplyKeyboardMarkup, ReplyKeyboardRemove
+TOKEN = os.getenv("BOT_TOKEN")
+START, QUESTION = range(2)
 
-RESET_MESSAGE = 'Начать заново'
+QUESTIONS = [
+    {"type": "fact", "question": "Где было наше первое свидание?", "answer": "парк Горького"},
+    {"type": "open", "question": "Назови мою самую смешную привычку?"},
+    {"type": "open", "question": "Что бы ты хотел сделать в ближайшее время вместе со мной?"},
+    {"type": "open", "question": "Что радует тебя в последнее время (кроме меня 😘)?"},
+    {"type": "open", "question": "Во сколько ты будешь сегодня дома? Напиши и отправь это Вале!"}
+]
 
-# load config from render.yml
-with open('render.yml') as config_file:
-    config = yaml.safe_load(config_file)
+user_progress = {}
 
-questions: List[Dict] = config['questions']
+# Получаем путь до текущего файла
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-bot = telebot.TeleBot(config['token'], parse_mode='Markdown')
-progress: Dict[int, int] = {}
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_progress[user_id] = 0
+    await update.message.reply_text("С Днем Рождения, любимый! 🎉 Готов к приключению? Напиши 'Да' ✨")
+    return START
 
+async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text.lower() in ["да", "конечно"]:
+        return await ask_question(update, context)
+    await update.message.reply_text("Ответь 'Да', чтобы начать 🥰")
+    return START
 
-def save_state():
-    with open('state.json', 'w') as state_file:
-        json.dump(progress, state_file)
+async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    step = user_progress.get(user_id, 0)
+    if step >= len(QUESTIONS):
+        await update.message.reply_text("🎉 Ты прошёл весь квест! Люблю тебя бесконечно ❤️")
+        return ConversationHandler.END
+    q = QUESTIONS[step]
+    await update.message.reply_text(q["question"])
+    return QUESTION
 
+async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    step = user_progress.get(user_id, 0)
+    q = QUESTIONS[step]
+    text = update.message.text or ""
 
-def load_state():
-    try:
-        with open('state.json') as state_file:
-            for user_id, question_id in dict(json.load(state_file)).items():
-                progress[int(user_id)] = int(question_id)
-    except FileNotFoundError:
-        pass
-
-
-# on exit save state
-atexit.register(save_state)
-load_state()
-random.seed()
-
-
-def markup(message: Union[str, List[str]]) -> str:
-    # if message is a list, choose random element
-    if isinstance(message, list):
-        message = random.choice(message)
-
-    return message.replace('\n', '\n\n')
-
-
-def send_question(user_id: int):
-    question_id = progress[user_id]
-    keyboard = ReplyKeyboardMarkup(True)
-
-    if question_id < len(questions):
-        question = questions[question_id]
-        if 'options' in question:
-            keyboard.row(*question['options'])
-        # add reset button
-        keyboard.row(RESET_MESSAGE)
-
-        bot.send_message(user_id, markup(question['question']), reply_markup=keyboard)
-
-        if 'image' in question:
-            # upload image to telegram servers and send it
-            with open(question['image'], 'rb') as image:
-                bot.send_photo(user_id, image)
-    else:
-        progress.pop(user_id)
-
-
-def check_answer(user_id: int, answer: str):
-    question_id = progress[user_id]
-    if question_id < len(questions):
-        question = config['questions'][question_id]
-
-        time.sleep(random.randrange(1, 3))
-
-        if answer.upper().strip() == question['answer'].upper():
-            progress[user_id] += 1
-            if progress[user_id] < len(questions):
-                bot.send_message(user_id, markup(question.get('correct_msg', config.get('correct_msg', 'Правильно!'))))
-                send_question(user_id)
-            else:
-                keyword = ReplyKeyboardMarkup(True)
-                keyword.row(RESET_MESSAGE)
-                bot.send_message(user_id, markup(config['end_msg']), reply_markup=keyword)
-                if 'end_image' in config:
-                    # upload image to telegram servers and send it
-                    with open(config['end_image'], 'rb') as image:
-                        bot.send_photo(user_id, image)
-
-                progress.pop(user_id)
+    if q["type"] == "fact":
+        if text.lower().strip() == q["answer"].lower().strip():
+            await update.message.reply_text("Верно! 😘")
         else:
-            bot.send_message(user_id, markup(question.get('incorrect_msg', config.get('incorrect_msg', 'Неправильно!'))))
+            await update.message.reply_text(f"Правильный ответ был: {q['answer']} 😉")
+    elif q["type"] == "open":
+        await update.message.reply_text("Запомню это ❤️")
 
+    ticket_number = step + 1
+    ticket_path = os.path.join(BASE_DIR, "tickets", f"ticket_{ticket_number}.jpg")
 
-@bot.message_handler(commands=['start'])
-@bot.message_handler(regexp=RESET_MESSAGE)
-def start_game(message: Message):
-    user_id = message.chat.id
-    bot.send_message(user_id, markup(config['start_msg'] % message.from_user.first_name), reply_markup=ReplyKeyboardRemove())
-    progress[user_id] = 0
-    send_question(user_id)
+    print(f"[DEBUG] Путь к билету: {ticket_path}, Существует: {os.path.exists(ticket_path)}")
 
-
-@bot.message_handler(content_types=['text'])
-def echo(message: Message):
-    user_id = message.chat.id
-    if user_id in progress:
-        check_answer(user_id, message.text)
+    if os.path.exists(ticket_path):
+        try:
+            await update.message.reply_photo(
+                InputFile(ticket_path),
+                caption=f"🎟 Билет №{ticket_number}\nДействует бессрочно — по взаимной договоренности 💌"
+            )
+        except Exception as e:
+            print(f"[ERROR] Ошибка при отправке фото: {e}")
     else:
-        bot.send_message(user_id, markup('Напиши /start, чтобы начать!'))
+        await update.message.reply_text(f"(❗) Билет №{ticket_number} не найден. Проверь папку 'tickets'")
 
+    user_progress[user_id] = step + 1
+    return await ask_question(update, context)
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Пока ❤️")
+    return ConversationHandler.END
 
 if __name__ == '__main__':
-    bot.infinity_polling()
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            START: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_start)],
+            QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_answer)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
+    app.add_handler(conv_handler)
+    app.run_polling()
